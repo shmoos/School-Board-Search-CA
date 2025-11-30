@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>California School Board Finder</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.5/dist/leaflet.css" />
+  <style>
+    body { font-family: 'Roboto', sans-serif; background: #f7f9fc; margin: 0; }
+    .container { max-width: 700px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    h1 { color: #1e3a8a; text-align: center; margin-bottom: 10px; }
+    p { text-align: center; margin-bottom: 20px; color: #555; }
+    input, button { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; }
+    input:focus { border-color: #1e3a8a; outline: none; }
+    button { background: #1e3a8a; color: #fff; border: none; cursor: pointer; }
+    button:hover { background: #374bb3; }
+    #map { height: 400px; width: 100%; margin-top: 20px; border-radius: 12px; }
+    .results { margin-top: 20px; }
+    .card { background: #f1f5f9; padding: 15px 20px; border-radius: 10px; margin-bottom: 10px; }
+    .card h3 { color: #1e3a8a; margin-bottom: 5px; }
+    .card p { margin: 2px 0; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>California School Board Finder</h1>
+    <p>Enter your address to find your local school board representatives.</p>
+
+    <input type="text" id="address" placeholder="Enter your address">
+    <button onclick="findRepresentatives()">Find Representatives</button>
+
+    <div id="map"></div>
+
+    <div class="results" id="results"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.5/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([37.7749, -122.4194], 6); // Default to California
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    async function findRepresentatives() {
+      const address = document.getElementById('address').value.trim();
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = '';
+
+      if (!address) {
+        resultsDiv.innerHTML = '<p>Please enter a valid address.</p>';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ location: address })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          resultsDiv.innerHTML = `<p>${data.error}</p>`;
+          return;
+        }
+
+        // Clear previous markers
+        if (window.markers) {
+          window.markers.forEach(marker => map.removeLayer(marker));
+        }
+        window.markers = [];
+
+        data.districts.forEach(district => {
+          // Display district info
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <h3>${district.name}</h3>
+            <p><strong>Website:</strong> <a href="${district.website}" target="_blank">${district.website}</a></p>
+            <p><strong>Superintendent:</strong> ${district.superintendent.name} | Email: <a href="mailto:${district.superintendent.email}">${district.superintendent.email}</a> | Phone: ${district.superintendent.phone}</p>
+          `;
+          district.trustees.forEach(trustee => {
+            card.innerHTML += `<p><strong>${trustee.position}:</strong> ${trustee.name} | Email: <a href="mailto:${trustee.email}">${trustee.email}</a> | Phone: ${trustee.phone}</p>`;
+          });
+          resultsDiv.appendChild(card);
+
+          // Add marker if coordinates exist
+          if (district.latitude && district.longitude) {
+            const marker = L.marker([district.latitude, district.longitude]).addTo(map)
+              .bindPopup(`<strong>${district.name}</strong><br>Superintendent: ${district.superintendent.name}`);
+            window.markers.push(marker);
+            map.setView([district.latitude, district.longitude], 10);
+          }
+        });
+
+      } catch (error) {
+        console.error(error);
+        resultsDiv.innerHTML = '<p>Failed to fetch representatives. Try again later.</p>';
+      }
+    }
+  </script>
+
+</body>
+</html>
